@@ -1,0 +1,22 @@
+# src/main/resources/application-docker.yml
+spring:
+  r2dbc:
+    url: r2dbc:postgresql://${DB_HOST:postgres}:${DB_PORT:5432}/${DB_NAME:payment_db}
+    username: ${DB_USER:payment_user}
+    password: ${DB_PASSWORD:payment_pass}
+
+  liquibase:
+    url: jdbc:postgresql://${DB_HOST:postgres}:${DB_PORT:5432}/${DB_NAME:payment_db}
+    user: ${DB_USER:payment_user}
+    password: ${DB_PASSWORD:payment_pass}
+    enabled: true
+
+  main:
+    web-application-type: reactive
+
+# Логирование для отладки
+logging:
+  level:
+    org.springframework.r2dbc: DEBUG
+    io.r2dbc.postgresql: DEBUG
+    org.springframework.data.r2dbc: DEBUG

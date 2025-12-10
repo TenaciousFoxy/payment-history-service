@@ -1,17 +1,21 @@
 global:
-scrape_interval: 15s
-evaluation_interval: 15s
+  scrape_interval: 15s
+  evaluation_interval: 15s
 
 scrape_configs:
+  - job_name: 'payment-service'
+    scrape_interval: 5s
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['payment-service:8080']
+        labels:
+          application: 'payment-history-service'
+          environment: 'docker'
 
-job_name: 'payment-service'
-metrics_path: '/actuator/prometheus'
-static_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
 
-targets: ['payment-service:8080']
-labels:
-application: 'payment-service'
-job_name: 'prometheus'
-static_configs:
-
-targets: ['localhost:9090']
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres:5432']
