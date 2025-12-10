@@ -1,0 +1,17 @@
+global:
+scrape_interval: 15s
+evaluation_interval: 15s
+
+scrape_configs:
+
+job_name: 'payment-service'
+metrics_path: '/actuator/prometheus'
+static_configs:
+
+targets: ['payment-service:8080']
+labels:
+application: 'payment-service'
+job_name: 'prometheus'
+static_configs:
+
+targets: ['localhost:9090']
