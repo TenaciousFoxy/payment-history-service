@@ -4,7 +4,11 @@ spring:
     url: r2dbc:postgresql://${DB_HOST:postgres}:${DB_PORT:5432}/${DB_NAME:payment_db}
     username: ${DB_USER:payment_user}
     password: ${DB_PASSWORD:payment_pass}
-
+    pool:
+      enabled: true
+      max-size: 500          # Увеличить с 50 до 500
+      initial-size: 100
+      max-idle-time: 5m
   liquibase:
     url: jdbc:postgresql://${DB_HOST:postgres}:${DB_PORT:5432}/${DB_NAME:payment_db}
     user: ${DB_USER:payment_user}

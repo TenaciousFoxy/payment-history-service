@@ -15,7 +15,7 @@ export const options = {
   scenarios: {
     read_load: {
       executor: 'constant-arrival-rate',
-      rate: 200,
+      rate: 300,
       timeUnit: '1s',
       duration: '10s',
       preAllocatedVUs: 100,

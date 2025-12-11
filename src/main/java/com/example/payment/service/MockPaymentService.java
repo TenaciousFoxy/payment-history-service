@@ -4,6 +4,7 @@ import com.example.payment.dto.PaymentDto;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -29,11 +30,17 @@ public class MockPaymentService {
             "Ежемесячный платеж", "Бонусная выплата", "Корпоративный перевод"
     );
 
+
+
     public Mono<PaymentDto> getRandomPayment() {
         return Mono.fromCallable(this::generateRandomPayment)
                 .delayElement(java.time.Duration.ofMillis(200)) // Задержка 200мс
-                .doOnSubscribe(sub -> log.debug("Generating random payment..."))
-                .doOnSuccess(payment -> log.debug("Payment generated: {}", payment.getTransactionId()));
+                .doOnSubscribe(sub -> {
+                    if (log.isDebugEnabled()) {
+                        log.debug("Generating random payment...");
+                    }
+                })
+                .subscribeOn(Schedulers.boundedElastic()); // Для параллельной генерации
     }
 
     private PaymentDto generateRandomPayment() {
@@ -46,9 +53,14 @@ public class MockPaymentService {
         payment.setPayerEmail(generateEmail(payment.getPayerName()));
         payment.setRecipientName("ООО 'Ромашка'");
         payment.setRecipientAccount("ACC" + String.format("%08d", RANDOM.nextInt(100000000)));
-        payment.setTransactionId("TXN" + System.currentTimeMillis() + RANDOM.nextInt(1000));
+
+        payment.setTransactionId("TXN" +
+                System.currentTimeMillis() +
+                Thread.currentThread().getId() +
+                RANDOM.nextInt(10000));
+
         payment.setDescription(DESCRIPTIONS.get(RANDOM.nextInt(DESCRIPTIONS.size())));
-        payment.setCreatedAt(LocalDateTime.now().minusMinutes(RANDOM.nextInt(1440))); // До 24 часов назад
+        payment.setCreatedAt(LocalDateTime.now().minusMinutes(RANDOM.nextInt(1440)));
         payment.setUpdatedAt(LocalDateTime.now());
 
         return payment;
