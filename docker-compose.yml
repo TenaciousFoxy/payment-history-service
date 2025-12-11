@@ -19,7 +19,24 @@ services:
     networks:
       - payment-network
     platform: linux/amd64  # Явно указываем платформу для совместимости
-
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: payment-frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+      - /app/node_modules
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+      - WDS_SOCKET_PORT=0
+    depends_on:
+      - payment-service
+    networks:
+      - payment-network
   payment-service:
     build:
       context: .
@@ -73,3 +90,4 @@ networks:
 
 volumes:
   postgres-data:  # Объявляем именованный том
+  node_modules:
