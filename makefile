@@ -83,8 +83,8 @@ test-api:
 	@echo "1. POST /api/payments/fetch-and-save:"
 	@curl -X POST http://localhost:8080/api/payments/fetch-and-save -s -w "\n   Статус: %{http_code} | Время: %{time_total}с\n"
 	@echo ""
-	@echo "2. GET /api/payments?limit=3:"
-	@curl -s http://localhost:8080/api/payments?limit=3 | grep -o '"id"' | wc -l | xargs echo "   Получено платежей:"
+	@echo "2. GET /api/payments/all:"
+	@curl -s http://localhost:8080/api/payments/all | grep -o '"id"' | wc -l | xargs echo "   Получено платежей:"
 
 # Тесты k6
 test-read:
