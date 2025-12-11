@@ -12,7 +12,7 @@
 
 
  1. Клонировать проект
-* ```git clone <repository-url>```  
+* ```git clone https://github.com/TenaciousFoxy/payment-history-service.git```  
 
 * ```cd payment-history-service```
 
