@@ -1,15 +1,16 @@
-# Dockerfile
+FROM eclipse-temurin:21-jdk-alpine as builder
+WORKDIR /app
+COPY . .
+RUN chmod +x mvnw && ./mvnw clean package -DskipTests
+
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
-COPY target/*.jar app.jar
+COPY --from=builder /app/target/*.jar app.jar
 EXPOSE 8080
 
-# Отключаем Liquibase через системное свойство
 ENTRYPOINT ["java", \
-    "-Xmx256m", \
-    "-Xms128m", \
-    "-XX:+UseG1GC", \
-    "-XX:MaxGCPauseMillis=100", \
+    "-Xmx512m", \
+    "-Xms256m", \
     "-Dspring.liquibase.enabled=false", \
     "-Dspring.profiles.active=docker", \
     "-jar", "app.jar"]

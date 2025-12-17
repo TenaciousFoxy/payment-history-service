@@ -1,179 +1,152 @@
-.PHONY: help build up down test clean logs db-shell status test-api test-read test-write test-full all frontend-up frontend-logs frontend-down clean-frontend deep-clean restart
+.PHONY: help all build build-frontend up down clean test-api test-full status logs restart reset-db
 
-# Переменные
-DOCKER_COMPOSE = docker-compose
-MAVEN = ./mvnw
-SCRIPTS_DIR = scripts
-FRONTEND_DIR = frontend
+# Цвета
+GREEN=\033[0;32m
+YELLOW=\033[1;33m
+RED=\033[0;31m
+BLUE=\033[0;34m
+NC=\033[0m
 
-# Основные команды
 help:
-	@echo "===================================================================="
-	@echo "Payment History Service - Команды управления"
-	@echo "===================================================================="
+	@echo "${BLUE}=== Payment Services ===${NC}"
 	@echo ""
-	@echo "🚀 ОСНОВНЫЕ КОМАНДЫ:"
-	@echo "  make all          - Полный цикл: сборка → запуск → фронтенд → тест API"
-	@echo "  make build        - Собрать проект"
-	@echo "  make up           - Запустить сервисы (без фронтенда)"
-	@echo "  make down         - Остановить сервисы"
-	@echo "  make restart      - Перезапустить сервисы"
+	@echo "${GREEN}Основные команды:${NC}"
+	@echo "  make all            - Полный цикл: сборка → запуск → тест"
+	@echo "  make build          - Собрать все сервисы"
+	@echo "  make build-frontend - Собрать только фронтенд"
+	@echo "  make up             - Запустить всё"
+	@echo "  make down           - Остановить всё"
+	@echo "  make restart        - Перезапустить"
 	@echo ""
-	@echo "🎨 ФРОНТЕНД:"
-	@echo "  make frontend-up    - Запустить React фронтенд"
-	@echo "  make frontend-logs  - Показать логи фронтенда"
-	@echo "  make frontend-down  - Остановить фронтенд"
+	@echo "${YELLOW}Тестирование:${NC}"
+	@echo "  make test-api      - Быстрый тест API"
+	@echo "  make test-full     - Полный нагрузочный тест"
+	@echo "  make status        - Статус сервисов"
+	@echo "  make logs          - Логи сервера"
 	@echo ""
-	@echo "🧪 ТЕСТИРОВАНИЕ:"
-	@echo "  make test-api   - Быстрая проверка API"
-	@echo "  make test-read  - Тест чтения (k6)"
-	@echo "  make test-write - Тест записи (k6)"
-	@echo "  make test-full  - Полный тест (k6)"
+	@echo "${RED}Очистка:${NC}"
+	@echo "  make clean         - Полная очистка"
+	@echo "  reset-db           - Очистка БД"
 	@echo ""
-	@echo "📊 МОНИТОРИНГ:"
-	@echo "  make logs       - Логи бэкенда"
-	@echo "  make status     - Статус всех сервисов"
-	@echo "  make db-shell   - Подключиться к БД PostgreSQL"
-	@echo ""
-	@echo "🧹 ОЧИСТКА:"
-	@echo "  make clean        - Базовая очистка"
-	@echo "  make clean-frontend - Очистка фронтенда"
-	@echo "  make deep-clean   - Полная очистка (Docker + фронтенд)"
-	@echo ""
-	@echo "🌐 ДОСТУП:"
-	@echo "  Backend API:  http://localhost:8080"
-	@echo "  Frontend:     http://localhost:3000"
-	@echo "  Swagger UI:   http://localhost:8080/swagger-ui.html"
-	@echo "===================================================================="
+	@echo "${BLUE}Доступ:${NC}"
+	@echo "  Frontend:    http://localhost:3000"
+	@echo "  Payment API: http://localhost:8080"
+	@echo "  Mock API:    http://localhost:8081"
+	@echo "  Swagger:     http://localhost:8080/swagger-ui.html"
 
 # Полный цикл
-all: build up frontend-up test-api
-	@echo "✅ Все запущено!"
-	@echo "   Backend:  http://localhost:8080"
-	@echo "   Frontend: http://localhost:3000"
+all: build up test-api
+	@echo ""
+	@echo "${GREEN}✅ Всё готово!${NC}"
+	@echo "${BLUE}Frontend:    http://localhost:3000${NC}"
+	@echo "${BLUE}Payment API: http://localhost:8080${NC}"
+	@echo "${BLUE}Mock API:    http://localhost:8081${NC}"
 
-# Фронтенд команды
-frontend-up:
-	@echo "🚀 Запуск React фронтенда..."
-	@$(DOCKER_COMPOSE) up -d frontend
-	@echo "✅ Фронтенд запущен на http://localhost:3000"
-
-frontend-logs:
-	@echo "📄 Логи фронтенда (Ctrl+C для выхода):"
-	@$(DOCKER_COMPOSE) logs -f frontend
-
-frontend-down:
-	@echo "🛑 Остановка фронтенда..."
-	@$(DOCKER_COMPOSE) stop frontend
-	@echo "✅ Фронтенд остановлен"
-
-# Сборка
+# Сборка всех сервисов
 build:
-	@echo "🏗️  Сборка проекта..."
-	@if [ -f "$(MAVEN)" ]; then \
-		$(MAVEN) clean package -DskipTests; \
-	fi
-	@$(DOCKER_COMPOSE) build --no-cache
-	@echo "✅ Сборка завершена"
+	@echo "${BLUE}🔨 Сборка всех сервисов...${NC}"
+	@echo "${YELLOW}1. Сборка mock-payment-service...${NC}"
+	@cd mock-payment-service && ./mvnw clean package -DskipTests >/dev/null 2>&1 && echo "${GREEN}   ✅ Собран${NC}" || { echo "${RED}   ❌ Ошибка${NC}"; exit 1; }
+	@echo "${YELLOW}2. Сборка payment-service...${NC}"
+	@cd payment-service && ./mvnw clean package -DskipTests >/dev/null 2>&1 && echo "${GREEN}   ✅ Собран${NC}" || { echo "${RED}   ❌ Ошибка${NC}"; exit 1; }
+	@echo "${YELLOW}3. Сборка фронтенда...${NC}"
+	@cd frontend && npm install >/dev/null 2>&1 && echo "${GREEN}   ✅ Зависимости установлены${NC}" || echo "${YELLOW}   ⚠️  Пропущена установка npm${NC}"
+	@echo "${GREEN}✅ Все сервисы собраны${NC}"
 
-# Запуск бэкенда
-up:
-	@echo "🚀 Запуск бэкенд сервисов..."
-	@$(DOCKER_COMPOSE) up -d postgres payment-service
-	@echo "Ожидание запуска (10 секунд)..."
-	@sleep 10
-	@curl -s -f http://localhost:8080/actuator/health >/dev/null 2>&1 && \
-		echo "✅ Бэкенд доступен" || \
-		echo "⚠️  Бэкенд запущен, но проверка не удалась"
+# Сборка только фронтенда
+build-frontend:
+	@echo "${BLUE}🎨 Сборка фронтенда...${NC}"
+	@cd frontend && npm install && echo "${GREEN}✅ Фронтенд собран${NC}"
+
+# Запуск
+up: build
+	@echo "${BLUE}🚀 Запуск всех сервисов...${NC}"
+	@docker-compose up --build -d
+	@echo "${YELLOW}⏳ Ожидание запуска (25 секунд)...${NC}"
+	@sleep 25
+	@make status
 
 # Остановка
 down:
-	@echo "🛑 Остановка всех сервисов..."
-	@$(DOCKER_COMPOSE) down -v
-	@echo "✅ Сервисы остановлены"
+	@echo "${RED}🛑 Остановка всех сервисов...${NC}"
+	@docker-compose down -v
+	@echo "${GREEN}✅ Остановлено${NC}"
 
 # Перезапуск
 restart: down up
 
-# Логи бэкенда
-logs:
-	@echo "📄 Логи бэкенда (Ctrl+C для выхода):"
-	@$(DOCKER_COMPOSE) logs -f payment-service
+# Очистка
+clean: down
+	@echo "${YELLOW}🧹 Полная очистка...${NC}"
+	@docker system prune -a --volumes -f 2>/dev/null || true
+	@rm -rf payment-service/target mock-payment-service/target frontend/node_modules 2>/dev/null || true
+	@echo "${GREEN}✅ Очищено${NC}"
 
 # Статус
 status:
-	@echo "📊 Статус контейнеров:"
-	@$(DOCKER_COMPOSE) ps
+	@echo "${BLUE}📊 Статус сервисов:${NC}"
+	@docker-compose ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | tail -n +2 || true
 	@echo ""
-	@echo "🌐 Проверка доступности:"
-	@curl -s http://localhost:8080/actuator/health 2>/dev/null | \
-		grep -o '"status":"[^"]*"' | head -1 | cut -d'"' -f4 | \
-		xargs echo "  Бэкенд:" || echo "  Бэкенд: ❌ не отвечает"
-	@curl -s -o /dev/null -w "%{http_code}" http://localhost:3000 2>/dev/null | \
-		grep -q "^2\|^3" && echo "  Фронтенд: ✅ доступен" || echo "  Фронтенд: ❌ не отвечает"
+	@echo "${BLUE}🌐 Проверка доступности:${NC}"
+	@echo -n "Frontend (3000): "
+	@curl -s -f --max-time 3 http://localhost:3000 >/dev/null 2>&1 && echo "${GREEN}✅${NC}" || echo "${RED}❌${NC}"
+	@echo -n "Payment (8080):  "
+	@curl -s -f --max-time 3 http://localhost:8080/actuator/health >/dev/null 2>&1 && echo "${GREEN}✅${NC}" || echo "${RED}❌${NC}"
+	@echo -n "Mock (8081):     "
+	@curl -s -f --max-time 3 http://localhost:8081/api/mock/payment >/dev/null 2>&1 && echo "${GREEN}✅${NC}" || echo "${RED}❌${NC}"
+
+# Логи
+logs:
+	@echo "${BLUE}📄 Логи всех сервисов (Ctrl+C для выхода):${NC}"
+	@docker-compose logs -f
 
 # Тест API
 test-api:
-	@echo "🧪 Тестирование API..."
-	@echo "1. POST /api/payments/fetch-and-save:"
-	@curl -X POST http://localhost:8080/api/payments/fetch-and-save -s -w "\n   Статус: %{http_code} | Время: %{time_total}с\n" || echo "   ❌ Ошибка запроса"
+	@echo "${BLUE}🧪 Тестирование API...${NC}"
+	@echo "1. Сохранение платежа:"
+	@curl -s -X POST http://localhost:8080/api/payments/fetch-and-save | grep -q "transactionId" && echo "   ${GREEN}✅ Успешно${NC}" || echo "   ${RED}❌ Ошибка${NC}"
 	@echo ""
-	@echo "2. GET /api/payments:"
-	@response=$$(curl -s http://localhost:8080/api/payments/all 2>/dev/null); \
-	if [ -n "$$response" ]; then \
-		count=$$(echo "$$response" | grep -o '"id"' | wc -l); \
-		echo "   Получено платежей: $$count"; \
-	else \
-		echo "   ❌ Нет данных"; \
-	fi
-
-# Тесты k6
-test-read:
-	@echo "📖 Запуск теста чтения..."
-	@if command -v k6 >/dev/null 2>&1; then \
-		k6 run $(SCRIPTS_DIR)/read-test.js; \
-	else \
-		echo "❌ k6 не установлен. Установите: brew install k6"; \
-	fi
-
-test-write:
-	@echo "✍️  Запуск теста записи..."
-	@if command -v k6 >/dev/null 2>&1; then \
-		k6 run $(SCRIPTS_DIR)/write-test.js; \
-	else \
-		echo "❌ k6 не установлен. Установите: brew install k6"; \
-	fi
-
+	@echo "2. Чтение платежей:"
+	@curl -s "http://localhost:8080/api/payments?size=5" | grep -q '"id"' && echo "   ${GREEN}✅ Доступно${NC}" || echo "   ${YELLOW}⚠️  Нет данных${NC}"
+	@echo ""
+	@echo "3. Swagger UI:"
+	@curl -s -f http://localhost:8080/swagger-ui.html >/dev/null && echo "   ${GREEN}✅ Доступен${NC}" || echo "   ${RED}❌ Не доступен${NC}"
+# Нагрузочный тест
 test-full:
-	@echo "🧪 Запуск полного теста..."
+	@echo "${YELLOW}🧪 Запуск полного нагрузочного теста...${NC}"
 	@if command -v k6 >/dev/null 2>&1; then \
-		k6 run $(SCRIPTS_DIR)/full-test.js; \
+		echo "Этапы теста:"; \
+		echo "  1. Только запись (100 VU × 30)"; \
+		echo "  2. Только чтение (100 VU × 30)"; \
+		echo "  3. Запись + чтение параллельно"; \
+		echo ""; \
+		k6 run scripts/full-test.js; \
 	else \
-		echo "❌ k6 не установлен. Установите: brew install k6"; \
+		echo "${RED}❌ k6 не установлен${NC}"; \
+		echo "${YELLOW}Установите:${NC}"; \
+		echo "  macOS: brew install k6"; \
+		echo "  Linux: sudo apt-get install k6"; \
+		echo "  Или скачайте: https://k6.io/docs/get-started/installation/"; \
 	fi
-
-# Подключение к БД
-db-shell:
-	@echo "🗄️  Подключение к БД PostgreSQL..."
-	@$(DOCKER_COMPOSE) exec postgres psql -U payment_user -d payment_db
-
-# Очистка
-clean:
-	@echo "🧹 Базовая очистка..."
-	@$(DOCKER_COMPOSE) down -v 2>/dev/null || true
-	@if [ -f "$(MAVEN)" ]; then \
-		$(MAVEN) clean; \
+reset-db:
+	@echo "🧹 Сброс данных БД..."
+	# 1. Graceful stop payment-service (дает время закрыть соединения)
+	@docker-compose stop payment-service 2>/dev/null || true
+	@sleep 5  # Даем время на закрытие соединений
+	# 2. Подключаемся и очищаем (ВАЖНО: -c 'autocommit=on' для VACUUM)
+	@docker-compose exec postgres psql -U payment_user -d payment_db \
+		-c "TRUNCATE TABLE payments RESTART IDENTITY;" \
+		-c "VACUUM ANALYZE;"
+	# 3. Запускаем заново
+	@docker-compose up -d payment-service
+	@sleep 5
+	@echo "✅ База очищена, сервис перезапущен"
+# Тест фронтенда
+test-frontend:
+	@echo "${BLUE}🎨 Тест фронтенда...${NC}"
+	@if curl -s -f http://localhost:3000 >/dev/null; then \
+		echo "${GREEN}✅ Фронтенд работает${NC}"; \
+		echo "Откройте: http://localhost:3000"; \
+	else \
+		echo "${RED}❌ Фронтенд не доступен${NC}"; \
 	fi
-	@echo "✅ Очистка завершена"
-
-clean-frontend:
-	@echo "🧹 Очистка фронтенда..."
-	@$(DOCKER_COMPOSE) stop frontend 2>/dev/null || true
-	@rm -rf $(FRONTEND_DIR)/node_modules $(FRONTEND_DIR)/build 2>/dev/null || true
-	@echo "✅ Фронтенд очищен"
-
-deep-clean: clean clean-frontend
-	@echo "🧹 Глубокая очистка Docker..."
-	@docker-compose down -v --rmi all 2>/dev/null || true
-	@docker system prune -a --volumes -f 2>/dev/null || true
-	@echo "✅ Глубокая очистка завершена"
