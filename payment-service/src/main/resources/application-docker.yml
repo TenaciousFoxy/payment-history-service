@@ -1,0 +1,9 @@
+spring:
+  r2dbc:
+    url: r2dbc:postgresql://postgres:5432/payment_db
+    username: payment_user
+    password: payment_pass
+
+mock:
+  service:
+    url: http://mock-payment-service:8081
