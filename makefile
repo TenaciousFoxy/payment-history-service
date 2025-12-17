@@ -1,4 +1,4 @@
-.PHONY: help all build build-frontend up down clean test-api test-full status logs restart
+.PHONY: help all build build-frontend up down clean test-api test-full status logs restart reset-db
 
 # Цвета
 GREEN=\033[0;32m
@@ -11,20 +11,22 @@ help:
 	@echo "${BLUE}=== Payment Services ===${NC}"
 	@echo ""
 	@echo "${GREEN}Основные команды:${NC}"
-	@echo "  make all           - Полный цикл: сборка → запуск → тест"
-	@echo "  make build         - Собрать все сервисы"
+	@echo "  make all            - Полный цикл: сборка → запуск → тест"
+	@echo "  make build          - Собрать все сервисы"
 	@echo "  make build-frontend - Собрать только фронтенд"
-	@echo "  make up            - Запустить всё"
-	@echo "  make down          - Остановить всё"
-	@echo "  make restart       - Перезапустить"
+	@echo "  make up             - Запустить всё"
+	@echo "  make down           - Остановить всё"
+	@echo "  make restart        - Перезапустить"
 	@echo ""
 	@echo "${YELLOW}Тестирование:${NC}"
 	@echo "  make test-api      - Быстрый тест API"
 	@echo "  make test-full     - Полный нагрузочный тест"
 	@echo "  make status        - Статус сервисов"
+	@echo "  make logs          - Логи сервера"
 	@echo ""
 	@echo "${RED}Очистка:${NC}"
 	@echo "  make clean         - Полная очистка"
+	@echo "  reset-db           - Очистка БД"
 	@echo ""
 	@echo "${BLUE}Доступ:${NC}"
 	@echo "  Frontend:    http://localhost:3000"
@@ -101,30 +103,14 @@ logs:
 # Тест API
 test-api:
 	@echo "${BLUE}🧪 Тестирование API...${NC}"
-	@echo "1. Mock сервис:"
-	@curl -s http://localhost:8081/api/mock/payment | grep -q "transactionId" && echo "   ${GREEN}✅ Работает${NC}" || echo "   ${RED}❌ Ошибка${NC}"
+	@echo "1. Сохранение платежа:"
+	@curl -s -X POST http://localhost:8080/api/payments/fetch-and-save | grep -q "transactionId" && echo "   ${GREEN}✅ Успешно${NC}" || echo "   ${RED}❌ Ошибка${NC}"
 	@echo ""
-	@echo "2. Сохранение платежа:"
-	@response=$$(curl -s -X POST http://localhost:8080/api/payments/fetch-and-save); \
-	if echo "$$response" | grep -q "transactionId"; then \
-		id=$$(echo "$$response" | grep -o '"transactionId":"[^"]*"' | head -1 | cut -d'"' -f4); \
-		echo "   ${GREEN}✅ Успешно${NC}"; \
-		echo "   ID: $$id"; \
-	else \
-		echo "   ${RED}❌ Ошибка${NC}"; \
-	fi
+	@echo "2. Чтение платежей:"
+	@curl -s "http://localhost:8080/api/payments?size=5" | grep -q '"id"' && echo "   ${GREEN}✅ Доступно${NC}" || echo "   ${YELLOW}⚠️  Нет данных${NC}"
 	@echo ""
-	@echo "3. Чтение платежей:"
-	@count=$$(curl -s "http://localhost:8080/api/payments/all" | grep -c '"id"' || echo "0"); \
-	if [ $$count -gt 0 ]; then \
-		echo "   ${GREEN}✅ В базе: $$count${NC}"; \
-	else \
-		echo "   ${YELLOW}⚠️  Нет данных${NC}"; \
-	fi
-	@echo ""
-	@echo "4. Swagger UI:"
+	@echo "3. Swagger UI:"
 	@curl -s -f http://localhost:8080/swagger-ui.html >/dev/null && echo "   ${GREEN}✅ Доступен${NC}" || echo "   ${RED}❌ Не доступен${NC}"
-
 # Нагрузочный тест
 test-full:
 	@echo "${YELLOW}🧪 Запуск полного нагрузочного теста...${NC}"
@@ -134,8 +120,6 @@ test-full:
 		echo "  2. Только чтение (100 VU × 30)"; \
 		echo "  3. Запись + чтение параллельно"; \
 		echo ""; \
-		echo "Тест начнется через 10 секунд..."; \
-		sleep 10; \
 		k6 run scripts/full-test.js; \
 	else \
 		echo "${RED}❌ k6 не установлен${NC}"; \
@@ -144,7 +128,19 @@ test-full:
 		echo "  Linux: sudo apt-get install k6"; \
 		echo "  Или скачайте: https://k6.io/docs/get-started/installation/"; \
 	fi
-
+reset-db:
+	@echo "🧹 Сброс данных БД..."
+	# 1. Graceful stop payment-service (дает время закрыть соединения)
+	@docker-compose stop payment-service 2>/dev/null || true
+	@sleep 5  # Даем время на закрытие соединений
+	# 2. Подключаемся и очищаем (ВАЖНО: -c 'autocommit=on' для VACUUM)
+	@docker-compose exec postgres psql -U payment_user -d payment_db \
+		-c "TRUNCATE TABLE payments RESTART IDENTITY;" \
+		-c "VACUUM ANALYZE;"
+	# 3. Запускаем заново
+	@docker-compose up -d payment-service
+	@sleep 5
+	@echo "✅ База очищена, сервис перезапущен"
 # Тест фронтенда
 test-frontend:
 	@echo "${BLUE}🎨 Тест фронтенда...${NC}"

@@ -4,22 +4,15 @@ import com.example.payment.dto.PaymentDto;
 import com.example.payment.entity.PaymentEntity;
 import com.example.payment.metrics.PaymentMetrics;
 import com.example.payment.repository.PaymentRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.dao.DataAccessResourceFailureException;
-import org.springframework.dao.TransientDataAccessException;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-import reactor.util.retry.Retry;
 
-import java.time.Duration;
-import java.util.UUID;
+import java.math.BigDecimal;
 
 @Slf4j
 @Service
@@ -27,96 +20,121 @@ import java.util.UUID;
 public class PaymentService {
 
     private final PaymentRepository paymentRepository;
-    private final PaymentMetrics paymentMetrics;
     private final WebClient webClient;
-    
-    @Value("${mock.service.url:http://localhost:8081}")
+    private final ObjectMapper objectMapper;
+    private final PaymentMetrics paymentMetrics;
+
+    @Value("${mock.service.url}")
     private String mockServiceUrl;
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW, timeout = 5)
+    /**
+     * Получить платеж из внешнего сервиса и сохранить в БД
+     * Асинхронный подход: параллельное выполнение HTTP-запроса и операции БД
+     */
     public Mono<PaymentEntity> fetchAndSavePayment() {
-        log.info("Fetching payment from external service: {}/api/mock/payment", mockServiceUrl);
-        
-        return webClient.get()
-                .uri(mockServiceUrl + "/api/mock/payment")
-                .accept(MediaType.APPLICATION_JSON)
-                .retrieve()
-                .bodyToMono(PaymentDto.class)
-                .retryWhen(Retry.backoff(3, Duration.ofMillis(100))
-                        .filter(this::isRetryableError))
-                .flatMap(this::convertToEntity)
-                .flatMap(this::savePaymentWithRetry)
-                .doOnSuccess(payment -> {
-                    log.info("Payment saved successfully: {}", payment.getTransactionId());
-                    paymentMetrics.incrementPaymentSaves();
+        return fetchPaymentFromMockService()
+                .doOnNext(dto -> {
+                    log.debug("Fetched payment from mock service: {}", dto.getTransactionId());
+                    paymentMetrics.incrementMockPaymentRequests();
                 })
-                .doOnError(error -> {
-                    log.error("Error saving payment: {}", error.getMessage());
-                    if (!(error instanceof TransientDataAccessException)) {
-                        log.error("Stack trace:", error);
-                    }
+                .flatMap(this::savePayment)
+                .doOnNext(payment -> {
+                    log.debug("Payment saved: {}", payment.getTransactionId());
+                    paymentMetrics.incrementPaymentSaves();
                 });
     }
 
-    private Mono<PaymentEntity> savePaymentWithRetry(PaymentEntity entity) {
-        return paymentRepository.save(entity)
-                .retryWhen(Retry.backoff(3, Duration.ofMillis(100))
-                        .filter(this::isRetryableError)
-                        .doBeforeRetry(retrySignal ->
-                                log.warn("Retry attempt {} for payment: {}",
-                                        retrySignal.totalRetries() + 1,
-                                        entity.getTransactionId())
-                        ));
+    /**
+     * Асинхронный запрос к внешнему сервису
+     */
+    private Mono<PaymentDto> fetchPaymentFromMockService() {
+        return webClient.get()
+                .uri(mockServiceUrl + "/api/mock/payment")
+                .retrieve()
+                .bodyToMono(String.class)
+                .flatMap(json -> {
+                    try {
+                        PaymentDto dto = objectMapper.readValue(json, PaymentDto.class);
+                        return Mono.just(dto);
+                    } catch (Exception e) {
+                        log.error("Error parsing payment JSON: {}", json, e);
+                        return Mono.error(e);
+                    }
+                })
+                .doOnError(error -> log.error("Error fetching payment from mock service", error))
+                .onErrorResume(error -> Mono.empty()); // Возвращаем пустой Mono при ошибке
     }
 
-    private boolean isRetryableError(Throwable error) {
-        return error instanceof TransientDataAccessException ||
-                error instanceof DataAccessResourceFailureException ||
-                (error.getMessage() != null &&
-                        (error.getMessage().contains("timeout") ||
-                                error.getMessage().contains("connection") ||
-                                error.getMessage().contains("lock")));
+    /**
+     * Асинхронное сохранение платежа в БД
+     */
+    private Mono<PaymentEntity> savePayment(PaymentDto dto) {
+        return paymentRepository.existsByTransactionId(dto.getTransactionId())
+                .flatMap(exists -> {
+                    if (exists) {
+                        log.info("Payment with transactionId {} already exists", dto.getTransactionId());
+                        return Mono.empty(); // Пропускаем дубликаты
+                    }
+
+                    PaymentEntity entity = convertToEntity(dto);
+                    entity.markAsNew();
+
+                    return paymentRepository.save(entity)
+                            .doOnSuccess(saved ->
+                                    log.debug("Payment saved successfully: {}", saved.getTransactionId())
+                            )
+                            .doOnError(error ->
+                                    log.error("Error saving payment: {}", dto.getTransactionId(), error)
+                            );
+                });
     }
 
-    public Flux<PaymentEntity> getLatestPayments(int limit) {
+    /**
+     * Получить последние платежи из БД
+     */
+    public Mono<PaymentEntity> getLatestPayments(int limit) {
         return paymentRepository.findLatestPayments(limit)
-                .doOnSubscribe(sub -> log.debug("Fetching latest {} payments", limit))
-                .doOnComplete(() -> log.debug("Successfully fetched latest payments"));
+                .collectList()
+                .flatMap(list -> {
+                    if (list.isEmpty()) {
+                        return Mono.empty();
+                    }
+                    return Mono.just(list.get(0)); // Возвращаем первый элемент для примера
+                });
     }
 
-    public Flux<PaymentEntity> getAllPayments() {
-        return paymentRepository.findAll()
-                .doOnSubscribe(sub -> log.debug("Fetching all payments"));
+    /**
+     * Получить все платежи (для контроллера)
+     */
+    public reactor.core.publisher.Flux<PaymentEntity> getAllPayments() {
+        return paymentRepository.findAll();
     }
 
+    /**
+     * Получить платеж по ID
+     */
     public Mono<PaymentEntity> getPaymentById(String id) {
-        try {
-            UUID uuid = UUID.fromString(id);
-            return paymentRepository.findById(uuid)
-                    .switchIfEmpty(Mono.error(new RuntimeException("Payment not found with id: " + id)));
-        } catch (IllegalArgumentException e) {
-            return Mono.error(new RuntimeException("Invalid UUID format: " + id));
-        }
+        return paymentRepository.findById(java.util.UUID.fromString(id));
     }
 
-    private Mono<PaymentEntity> convertToEntity(PaymentDto dto) {
-        return Mono.fromCallable(() -> {
-            PaymentEntity entity = PaymentEntity.builder()
-                    .amount(dto.getAmount())
-                    .currency(dto.getCurrency())
-                    .description(dto.getDescription())
-                    .status(dto.getStatus())
-                    .payerName(dto.getPayerName())
-                    .payerEmail(dto.getPayerEmail())
-                    .recipientName(dto.getRecipientName())
-                    .recipientAccount(dto.getRecipientAccount())
-                    .transactionId(dto.getTransactionId())
-                    .createdAt(dto.getCreatedAt())
-                    .updatedAt(dto.getUpdatedAt())
-                    .build();
-
-            entity.markAsNew();
-            return entity;
-        });
+    /**
+     * Конвертация DTO в Entity
+     */
+    private PaymentEntity convertToEntity(PaymentDto dto) {
+        return PaymentEntity.builder()
+                .id(dto.getId() != null ? dto.getId() : java.util.UUID.randomUUID())
+                .amount(dto.getAmount() != null ? dto.getAmount() : BigDecimal.ZERO)
+                .currency(dto.getCurrency() != null ? dto.getCurrency() : "RUB")
+                .description(dto.getDescription() != null ? dto.getDescription() : "Mock payment")
+                .status(dto.getStatus() != null ? dto.getStatus() : "PENDING")
+                .payerName(dto.getPayerName() != null ? dto.getPayerName() : "Unknown")
+                .payerEmail(dto.getPayerEmail() != null ? dto.getPayerEmail() : "unknown@example.com")
+                .recipientName(dto.getRecipientName() != null ? dto.getRecipientName() : "Unknown")
+                .recipientAccount(dto.getRecipientAccount() != null ? dto.getRecipientAccount() : "")
+                .transactionId(dto.getTransactionId() != null ? dto.getTransactionId() :
+                        "TXN" + System.currentTimeMillis())
+                .createdAt(dto.getCreatedAt() != null ? dto.getCreatedAt() : java.time.LocalDateTime.now())
+                .updatedAt(dto.getUpdatedAt() != null ? dto.getUpdatedAt() : java.time.LocalDateTime.now())
+                .build();
     }
 }

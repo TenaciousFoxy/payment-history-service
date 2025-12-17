@@ -1,31 +1,74 @@
 server:
   port: 8080
+  shutdown: graceful
+  netty:
+    connection-timeout: 10s
+    idle-timeout: 30s
 
 spring:
   application:
     name: payment-service
+
   r2dbc:
-    url: r2dbc:postgresql://${DB_HOST:postgres}:${DB_PORT:5432}/${DB_NAME:payment_db}
+    url: r2dbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:payment_db}
     username: ${DB_USER:payment_user}
     password: ${DB_PASSWORD:payment_pass}
-  main:
-    web-application-type: reactive
+    pool:
+      enabled: true
+      initial-size: 5
+      max-size: 80
+      max-idle-time: 30s
+      max-life-time: 120s
+      max-acquire-time: 30s
+      validation-query: "SELECT 1"
+      test-on-acquire: false
+      min-idle: 2
+      time-between-eviction-runs: 10s
+      test-while-idle: true
+
+  reactor:
+    netty:
+      resources:
+        max-connections: 1000
+        max-idle-time: 60s
+
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration
+
+logging:
+  level:
+    com.example.payment: INFO
+    reactor.netty: WARN
+    org.springframework.data.r2dbc: WARN
+  pattern:
+    console: "%d{HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n"
 
 mock:
   service:
-    url: ${MOCK_SERVICE_URL:http://mock-payment-service:8081}
+    url: ${MOCK_SERVICE_URL:http://localhost:8081}
 
 management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics
+        include: health,info,metrics,prometheus
       base-path: /actuator
   endpoint:
     health:
-      show-details: when_authorized
+      show-details: always
+      probes:
+        enabled: true
+      db:
+        enabled: true
+        validation-query: "SELECT 1"
+        timeout: 2s
+    metrics:
+      enabled: true
+    prometheus:
+      enabled: true
 
-logging:
-  level:
-    com.example.payment: INFO
-    org.springframework.r2dbc: WARN
+reactor:
+  schedulers:
+    defaultBoundedElasticSize: 200
+    defaultBoundedElasticQueueSize: 10000

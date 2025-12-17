@@ -8,7 +8,6 @@ WORKDIR /app
 COPY --from=builder /app/target/*.jar app.jar
 EXPOSE 8080
 
-# Отключаем Liquibase и включаем профиль docker
 ENTRYPOINT ["java", \
     "-Xmx512m", \
     "-Xms256m", \

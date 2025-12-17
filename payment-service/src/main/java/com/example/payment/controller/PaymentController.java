@@ -33,10 +33,13 @@ public class PaymentController {
     @PostMapping(value = "/fetch-and-save", produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
     public Mono<PaymentEntity> fetchAndSavePayment() {
-        log.info("Received request to fetch and save payment");
+        log.debug("Received request to fetch and save payment");
         return paymentService.fetchAndSavePayment()
                 .doOnSuccess(payment ->
-                        log.info("Payment saved with ID: {}", payment.getTransactionId())
+                        log.debug("Payment saved with transaction ID: {}", payment.getTransactionId())
+                )
+                .doOnError(error ->
+                        log.error("Error in fetchAndSavePayment", error)
                 );
     }
 
@@ -49,22 +52,26 @@ public class PaymentController {
     @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
     public Flux<PaymentEntity> getLatestPayments(
             @RequestParam(value = "limit", defaultValue = "10") int limit) {
-        log.info("Received request for latest {} payments", limit);
-        return paymentService.getLatestPayments(limit)
-                .doOnComplete(() -> log.info("Successfully returned latest payments"));
+        log.debug("Received request for latest {} payments", limit);
+        return paymentService.getAllPayments()
+                .take(limit)
+                .doOnComplete(() -> log.debug("Successfully returned latest payments"))
+                .doOnError(error -> log.error("Error getting latest payments", error));
     }
 
     @Operation(summary = "Получить все платежи из БД")
     @GetMapping(value = "/all", produces = MediaType.APPLICATION_JSON_VALUE)
     public Flux<PaymentEntity> getAllPayments() {
-        log.info("Received request for all payments");
-        return paymentService.getAllPayments();
+        log.debug("Received request for all payments");
+        return paymentService.getAllPayments()
+                .doOnError(error -> log.error("Error getting all payments", error));
     }
 
     @Operation(summary = "Получить платеж по ID")
     @GetMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
     public Mono<PaymentEntity> getPaymentById(@PathVariable String id) {
-        log.info("Received request for payment with ID: {}", id);
-        return paymentService.getPaymentById(id);
+        log.debug("Received request for payment with ID: {}", id);
+        return paymentService.getPaymentById(id)
+                .doOnError(error -> log.error("Error getting payment by ID: {}", id, error));
     }
 }

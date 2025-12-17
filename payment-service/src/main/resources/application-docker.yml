@@ -7,3 +7,8 @@ spring:
 mock:
   service:
     url: http://mock-payment-service:8081
+reactor:
+  netty:
+    resources:
+      max-connections: 2000
+      max-idle-time: 120s

@@ -29,20 +29,21 @@ public class MockController {
         
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime createdAt = now.minusMinutes(RANDOM.nextInt(1440));
-        
+
         String paymentJson = String.format(
-            "{\"id\":\"%s\",\"amount\":%.2f,\"currency\":\"%s\",\"description\":\"Mock payment\"," +
-            "\"status\":\"%s\",\"payerName\":\"Иван Иванов\",\"payerEmail\":\"ivan@example.com\"," +
-            "\"recipientName\":\"ООО Ромашка\",\"recipientAccount\":\"ACC%08d\"," +
-            "\"transactionId\":\"TXN%d\",\"createdAt\":\"%s\",\"updatedAt\":\"%s\"}",
-            UUID.randomUUID().toString(),
-            100 + RANDOM.nextDouble() * 9900,
-            CURRENCIES[RANDOM.nextInt(CURRENCIES.length)],
-            STATUSES[RANDOM.nextInt(STATUSES.length)],
-            RANDOM.nextInt(100000000),
-            System.currentTimeMillis(),
-            createdAt.format(FORMATTER),
-            now.format(FORMATTER)
+                "{\"id\":\"%s\",\"amount\":%.2f,\"currency\":\"%s\",\"description\":\"Mock payment\"," +
+                        "\"status\":\"%s\",\"payerName\":\"Иван Иванов\",\"payerEmail\":\"ivan@example.com\"," +
+                        "\"recipientName\":\"ООО Ромашка\",\"recipientAccount\":\"ACC%08d\"," +
+                        "\"transactionId\":\"TXN%d-%d\",\"createdAt\":\"%s\",\"updatedAt\":\"%s\"}",
+                UUID.randomUUID().toString(),
+                100 + RANDOM.nextDouble() * 9900,
+                CURRENCIES[RANDOM.nextInt(CURRENCIES.length)],
+                STATUSES[RANDOM.nextInt(STATUSES.length)],
+                RANDOM.nextInt(100000000),
+                System.currentTimeMillis(),
+                System.nanoTime(),
+                createdAt.format(FORMATTER),
+                now.format(FORMATTER)
         );
         
         return Mono.just(paymentJson)
